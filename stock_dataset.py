@@ -1,8 +1,7 @@
 import os
-import math
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
+import matplotlib.pyplot as plt
 
 
 DATASETS_DIR = '.\\stock_dataset\\datasets'
@@ -21,6 +20,9 @@ PRE_INCLUDE_DIFF_HIGH_LOW = 2
 PRE_INCLUDE_DIFF_CLOSE_OPEN = 4
 PRE_INCLUDE_LR = 8
 PRE_INCLUDE_TI = 16
+
+NORM_MIN_MAX = 0
+NORM_Z_SCORE = 1
 
 
 def load_dataset(dataset_name=list(DATASETS_FILE_NAMES.keys())[0],  stock_name=None, split_year_train_test=None):
@@ -48,6 +50,7 @@ def plot_stock(dataset, stock_name, variable_name="Open", split=(3, 1, 1)):
     end_year = dataset.index[-1].year + 1
     dataset = dataset[dataset["Name"] == stock_name]
 
+    plt.figure()
     dataset[variable_name].plot(figsize=(16, 4), legend=True)
 
     plt.legend()
@@ -159,11 +162,7 @@ def get_sequences(arr, window, padding=[]):
     return x, y
 
 
-def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), options=0, label='Close'):
-
-    global sc
-    n = 10  # window
-    EPS = np.finfo('float32').eps
+def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), options=0, label='Close', norm_options={"METHOD": NORM_MIN_MAX, "HIGH_LOW": (0, 1)}):
 
     def ema(arr, window):
 
@@ -178,31 +177,35 @@ def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), opt
             ema[i] = arr[i] * alpha + ema[i - 1] * (1 - alpha)
 
         return ema
+    
 
+    window = 10
+    EPS = np.finfo('float32').eps
+    
     Ot = dataset["Open"].values
     Ht = dataset["High"].values
     Ct = dataset["Close"].values
     Lt = dataset["Low"].values
     V = dataset["Volume"].values
-    HH_n = dataset["High"].rolling(window=n, min_periods=1).max()
-    LL_n = dataset["Low"].rolling(window=n, min_periods=1).min()
+    HH_n = dataset["High"].rolling(window=window, min_periods=1).max()
+    LL_n = dataset["Low"].rolling(window=window, min_periods=1).min()
 
     if PRE_INCLUDE_TI & options:
 
         # EMA
-        dataset["EMA"] = ema(Ct, n)
+        dataset["EMA"] = ema(Ct, window)
 
         # STOCHASTIC
         dataset["Stochastic"] = ((Ct - LL_n) / (HH_n - LL_n + EPS)) * 100
 
         # ROC
-        close_n = np.roll(Ct, n)
-        close_n[0:n] = close_n[n]
+        close_n = np.roll(Ct, window)
+        close_n[0:window] = close_n[window]
         dataset["ROC"] = ((Ct - close_n) / (close_n + EPS)) * 100
 
         # RSI
-        sum_gain = dataset["Close"].diff(periods=-1).rolling(window=n, min_periods=1).apply(func=lambda x: np.sum(x[x < 0]), raw=True) * -1
-        sum_loss = dataset["Close"].diff(periods=-1).rolling(window=n, min_periods=1).apply(func=lambda x: np.sum(x[x >= 0]), raw=True)
+        sum_gain = dataset["Close"].diff(periods=-1).rolling(window=window, min_periods=1).apply(func=lambda x: np.sum(x[x < 0]), raw=True) * -1
+        sum_loss = dataset["Close"].diff(periods=-1).rolling(window=window, min_periods=1).apply(func=lambda x: np.sum(x[x >= 0]), raw=True)
 
         dataset["RSI"] = 100 - (100 / (1 + (sum_gain / (sum_loss + EPS))))
 
@@ -296,15 +299,27 @@ def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), opt
             walks['WALK_{}'.format(walk)]['STD_PARAMS']['MIN'] = train_stats.iloc[3, :].values
             walks['WALK_{}'.format(walk)]['STD_PARAMS']['MAX'] = train_stats.iloc[7, :].values
 
-            train = (train.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
+            if norm_options["METHOD"] == NORM_MIN_MAX:
+
+                low = norm_options["HIGH_LOW"][0]
+                high = norm_options["HIGH_LOW"][1]
+
+                train = ((high - low) * (train.values - train_stats.iloc[3, :].values) / (train_stats.iloc[7, :].values - train_stats.iloc[3, :].values)) + low
+                validation = ((high - low) * (validation.values - train_stats.iloc[3, :].values) / (train_stats.iloc[7, :].values - train_stats.iloc[3, :].values)) + low
+                test = ((high - low) * (test.values - train_stats.iloc[3, :].values) / (train_stats.iloc[7, :].values - train_stats.iloc[3, :].values)) + low
+
+            elif norm_options["METHOD"] == NORM_Z_SCORE:
+
+                train = (train.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
+                validation = (validation.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
+                test = (test.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
+
             walks['WALK_{}'.format(walk)]['TRAIN'] = get_sequences(arr=train, window=lookback)
             padding = train[-lookback:]
 
-            validation = (validation.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
             walks['WALK_{}'.format(walk)]['VALIDATION'] = get_sequences(arr=validation, window=lookback, padding=padding)
             padding = validation[-lookback:]
 
-            test = (test.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
             walks['WALK_{}'.format(walk)]['TEST'] = get_sequences(arr=test, window=lookback, padding=padding)
 
     else:
@@ -336,158 +351,3 @@ def mdd(arr, window=252):
     # Again, use min_periods=1 if you want to allow the expanding window
     max_daily_drawdown = daily_drawdown.rolling(window=window, min_periods=1).min()
     return daily_drawdown, max_daily_drawdown
-
-# def get_best_model(models, x_train_set, y_train_set, x_valid_set, y_valid_set, x_test_set, y_test_set, n_walk):
-#     prova = 0
-#     global decrease
-#     decrease = False
-#
-#     def lr_scheduler(epoch, lr):
-#         global decrease
-#
-#         decay_rate = 0.85
-#         decay_step = 1
-#
-#         if prova % decay_step == 0 and decrease:
-#             decrease = False
-#             return lr * pow(decay_rate, np.floor(prova / decay_step))
-#
-#         return lr
-#
-#     callbacks = [LearningRateScheduler(lr_scheduler, verbose=1)]
-#
-#     result = []
-#     history_collection = []
-#     min_rmse = 99999
-#
-#     print("Number of models:", len(models))
-#     tot_time = time.time()
-#     # train all models
-#     for model in models:
-#         print("\n***************************\n", model)
-#
-#         regressor = create_nn(input_shape=(x_train_set[0].shape[1], x_train_set[0].shape[2]),
-#                               version=model['model'],
-#                               dense_layers=model['dense_layers'],
-#                               conv_units=model['conv_units'],
-#                               lstm_units=model['lstm_units'],
-#                               learning_rate=model['lr'])
-#         history = []
-#         model_time = time.time()
-#         # walk forward
-#         for j in range(5):
-#             t = time.time()
-#             for i in range(n_walk):
-#                 print("\nwalk:", i, "\nSuperEpoch:", prova, "\n")
-#                 history.append(
-#                     regressor.fit(x_train_set[i], y_train_set[i], epochs=model['epochs'], batch_size=model['batch'],
-#                                   validation_data=(x_valid_set[i], y_valid_set[i]), callbacks=callbacks))
-#             prova += 1
-#             decrease = True
-#             t2 = time.time() - t
-#             print(round(t2 / 60, 0), "min superEpoch elapsed")
-#             print(round(t2 * (5 - j) / 60, 0), "min missing")
-#         prova = 0
-#         print(round((time.time() - model_time) / 60, 0), "min elapsed model")
-#
-#         history_collection.append(history)
-#
-#         # Prediction
-#         rmse = 0
-#         mape = 0
-#         for i in range(n_walk):
-#             prediction = regressor.predict(x_valid_set[i])
-#             print(i, prediction.shape, x_valid_set[i].shape)
-#             prediction = sc.inverse_transform(
-#                 np.hstack((prediction, np.zeros((len(x_valid_set[i]), x_valid_set[0].shape[2] - 1)))))
-#             # prediction = sc.inverse_transform(prediction)
-#
-#             y = y_valid_set[i].reshape(-1, 1)
-#             y = sc.inverse_transform(np.hstack((y, np.zeros((len(y), x_valid_set[0].shape[2] - 1)))))
-#             # y_test = sc.inverse_transform(y_test[0])
-#
-#             # Evaluating our model
-#             plot_prediction(name, y[:, 0], prediction[:, 0])
-#             r, m = return_rmse(y[:, 0], prediction[:, 0])
-#             rmse += r
-#             mape += m
-#
-#         print("\nTOT:")
-#         print("RMSE: {}.".format(rmse / n_walk))
-#         print("MAPE: {}.".format(mape / n_walk))
-#         result.append((rmse, mape))
-#
-#         if rmse < min_rmse:
-#             min_rmse = rmse
-#             best_regressor = regressor
-#
-#     print(round((time.time() - tot_time) / 60, 0), "total")
-#     return result, history_collection, best_regressor
-
-
-def return_rmse(test, predicted):
-
-    rmse = math.sqrt(mean_squared_error(test, predicted))
-    mape = np.mean(abs((test - predicted) / test))
-
-    print("RMSE: {}.".format(rmse))
-    print("MAPE: {}.".format(mape))
-
-    return rmse, mape
-
-# name = 'IBM'
-# split_year = '2016'
-# lookback = 60
-# rem_features = ["High", "Low", "Close", "Volume"]
-# pre_processing_options = [NORMALIZE, INCLUDE_TI, INCLUDE_LR, INCLUDE_DIFF_OPEN_CLOSE, INCLUDE_DIFF_HIGH_LOW]
-#
-# options = 0
-# for opt in pre_processing_options:
-#     options = options | opt
-#
-# X_train, X_test, dataset = load_dataset(name, split_year)
-# plot_stock(X_train, X_test, name, split_year)
-#
-# dates = dataset.index
-# # X_train, X_test, y_train, y_test = pre_processing(X_train, X_test, rem_features, lookback, options = options)
-#
-# dataset = pre_processing_full(dataset, rem_features, lookback, options=options)
-# train_sets, validation_sets, test_sets, n_walk = walk_forward(dataset, dates, 3, 1, 1)
-
-
-
-
-# X_train = []
-# y_train = []
-# X_validation = []
-# y_validation = []
-# X_test = []
-# y_test = []
-#
-# val_pred = 0
-# for i in range(n_walk):
-#
-#     train_seq = get_sequences(train_sets[i], lookback)
-#     X_train.append(train_seq[:-1])
-#     y_train.append(train_seq[1:, 0, val_pred])  # get label from first element of next sequence
-#
-#     validation_seq = get_sequences(validation_sets[i], lookback, padding=train_seq[-1])
-#     X_validation.append(validation_seq[:-1])
-#     y_validation.append(validation_seq[1:, 0, val_pred])
-#
-#     test_seq = get_sequences(test_sets[i], lookback, padding=validation_seq[-1])
-#     X_test.append(test_seq[:-1])
-#     y_test.append(test_seq[1:, 0, val_pred])
-#     # y_test.append(np.roll(test_seq[:,0,val_pred],1)[1:])
-#
-# X_train, y_train = np.asarray(X_train), np.asarray(y_train)
-# X_validation, y_validation = np.asarray(X_validation), np.asarray(y_validation)
-# X_test, y_test = np.asarray(X_test), np.asarray(y_test)
-#
-# print("X_train: {} - y_train: {}".format(X_train[0].shape, y_train[0].shape))
-# print("X_validation: {} - y_validation: {}".format(X_validation[0].shape, y_validation[0].shape))
-# print("X_test: {} - y_test: {}".format(X_test[0].shape, y_test[0].shape))
-#
-# models = get_grid_search(models=[1, 2, 3, 4], solvers=['adam'], lrs=[0.001, 0.005], epochs=[25], batches=[16, 32],
-#                          lstm_units=[50, 100], dense_layers=[2], conv_units=[128])
-# get_best_model(models, X_train, y_train, X_validation, y_validation, X_test, y_test, n_walk)

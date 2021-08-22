@@ -1,19 +1,21 @@
+import json
+import os
 import time
-import numpy as np
-import matplotlib.pyplot as plt
 import tensorflow
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, LSTM, Dropout, Conv1D, BatchNormalization
 from tensorflow.keras.callbacks import LearningRateScheduler
 from sklearn.model_selection import ParameterGrid
-from sklearn.metrics import mean_squared_error
 
 from stock_dataset import stock_dataset
 
 
 class ModelFactory:
 
-    def __init__(self, dataset_name=list(stock_dataset.DATASETS_FILE_NAMES.keys())[0], stock_name="IBM", rem_features=[], lookback=60, split=(3, 1, 1), options=[], label="Close"):
+    def __init__(self, dataset_name=list(stock_dataset.DATASETS_FILE_NAMES.keys())[0], stock_name="IBM", rem_features=[], lookback=60, split=(3, 1, 1), options=[], label="Close", norm_options={"METHOD": stock_dataset.NORM_MIN_MAX, "HIGH_LOW": (0, 1)}):
 
         self.lookback = lookback
         self.split = split
@@ -24,23 +26,26 @@ class ModelFactory:
 
         self.options = pre_processing_options
         self.label = label
+        self.norm_options = norm_options
 
         self.stock_name = stock_name
         self.dataset = stock_dataset.load_dataset(dataset_name=dataset_name, stock_name=self.stock_name)
         self.dataset = stock_dataset.repair_dataset(dataset=self.dataset, nafix=stock_dataset.CHK_FILL)
-        self.walks = stock_dataset.pre_processing(dataset=self.dataset, rem_features=rem_features, lookback=lookback, split=split, options=self.options, label=label)
+        self.walks = stock_dataset.pre_processing(dataset=self.dataset, rem_features=rem_features, lookback=lookback, split=split, options=self.options, label=label, norm_options=norm_options)
         self.models = []
 
-    def add_grid_search(self, models=[1], solvers=['adam'], lrs=[0.00075], epochs=[25], batches=[32], lstm_units=[50], dense_layers=[0], conv_units=[0]):
+    def add_grid_search(self, models=[1], solvers=['adam'], learning_rates=[0.001], epochs=[1], batches=[32], lstm_units=[50], dense_layers=[0], conv_units=[0], learning_rate_decays=[1], learning_rate_steps=[1]):
 
         grid = dict(model=models,
                     solver=solvers,
-                    lr=lrs,
+                    learning_rate=learning_rates,
                     epochs=epochs,
                     batch=batches,
                     lstm_units=lstm_units,
                     dense_layers=dense_layers,
-                    conv_units=conv_units)
+                    conv_units=conv_units,
+                    learning_rate_decay=learning_rate_decays,
+                    learning_rate_step=learning_rate_steps)
 
         grid = list(ParameterGrid(grid))
 
@@ -58,34 +63,6 @@ class ModelFactory:
                   "Units in LSTM Layer: ", model["lstm_units"],
                   "N. of Dense Layer: ", model["dense_layers"],
                   "Units in Dense Layer: ", model["conv_units"])
-
-    def metrics(self, y, pred):
-
-        mape = tensorflow.keras.metrics.MeanAbsolutePercentageError()
-        rmse = tensorflow.keras.metrics.RootMeanSquaredError()
-        mse = tensorflow.keras.metrics.MeanSquaredError()
-        mae = tensorflow.keras.metrics.MeanAbsoluteError()
-        msle = tensorflow.keras.metrics.MeanSquaredLogarithmicError()
-        csm = tensorflow.keras.metrics.CosineSimilarity()
-        lce = tensorflow.keras.metrics.LogCoshError()
-
-        mape.update_state(y, pred)
-        rmse.update_state(y, pred)
-        mse.update_state(y, pred)
-        mae.update_state(y, pred)
-        msle.update_state(y, pred)
-        csm.update_state(y, pred)
-        lce.update_state(y, pred)
-
-        print("MAPE:", mape.result().numpy())
-        print("RMSE:", rmse.result().numpy())
-        print("MSE:", mse.result().numpy())
-        print("MAE:", mae.result().numpy())
-        print("MSLE:", msle.result().numpy())
-        print("CSM:", csm.result().numpy())
-        print("LCE:", lce.result().numpy())
-
-        return np.asarray([mape.result().numpy(), rmse.result().numpy(), mse.result().numpy(), mae.result().numpy(), msle.result().numpy(), csm.result().numpy(), lce.result().numpy()])
 
     def create_nn(self, input_shape, version, dense_layers, conv_units, lstm_units, learning_rate):
 
@@ -111,16 +88,10 @@ class ModelFactory:
         elif version == 2:
 
             regressor.add(LSTM(units=lstm_units, return_sequences=True, input_shape=input_shape))
-            regressor.add(Dropout(0.2))
-            regressor.add(Conv1D(filters=conv_units, kernel_size=3))
-            regressor.add(BatchNormalization())
             regressor.add(tensorflow.keras.layers.LeakyReLU(alpha=0.2))
 
             # Adding a second LSTM
             regressor.add(LSTM(units=lstm_units, return_sequences=True))
-            regressor.add(Dropout(0.2))
-            regressor.add(Conv1D(filters=conv_units, kernel_size=3))
-            regressor.add(BatchNormalization())
             regressor.add(tensorflow.keras.layers.LeakyReLU(alpha=0.2))
 
             # Adding a third LSTM
@@ -151,7 +122,7 @@ class ModelFactory:
         # Output Layer
         for _ in range(dense_layers):
 
-            regressor.add(Dense(units=128, activation='tanh'))
+            regressor.add(Dense(units=1024, activation='tanh'))
 
         regressor.add(Dense(units=1))
 
@@ -165,33 +136,36 @@ class ModelFactory:
         lce = tensorflow.keras.metrics.LogCoshError(name='lce')
 
         # Compile RNN
-        regressor.compile(optimizer=tensorflow.keras.optimizers.Adam(learning_rate=learning_rate), loss='mean_squared_error', metrics=[mape, rmse, mse, mae, msle, csm, lce])
+        regressor.compile(optimizer=tensorflow.keras.optimizers.Adam(learning_rate=learning_rate), loss=tensorflow.keras.losses.MeanSquaredError(), metrics=[mape, rmse, mse, mae, msle, csm, lce])
 
         return regressor
 
-    def grid_search(self):
+    def grid_search(self, result_path="./grid_search_results"):
 
-        def lr_scheduler(epoch, lr):
-            decay_rate = 0.85
-            decay_step = 5
+        if not os.path.exists(result_path):
 
-            if epoch % decay_step == 0 and epoch:
-                return lr * pow(decay_rate, np.floor(epoch / decay_step))
-
-            return lr
-
-        callbacks = [LearningRateScheduler(lr_scheduler, verbose=1)]
+            os.mkdir(result_path)
 
         results = np.zeros(7)
         histories = []
-        count = 0
+        count = 1
 
         start = time.time()
 
         for model in self.models:
 
-            self.walks['RESULTS'] = {}
-            self.walks['RESULTS']['METRICS'] = np.zeros(7)
+            def lr_scheduler(epoch, lr):
+
+                decay_rate = model['learning_rate_decay']
+                decay_step = model['learning_rate_step']
+
+                if epoch % decay_step == 0 and epoch:
+
+                    return lr * pow(decay_rate, epoch // decay_step)
+
+                return lr
+
+            callbacks = [LearningRateScheduler(lr_scheduler, verbose=1)]
 
             for walk in range(self.walks['N_WALKS']):
 
@@ -202,7 +176,7 @@ class ModelFactory:
                                            dense_layers=model['dense_layers'],
                                            conv_units=model['conv_units'],
                                            lstm_units=model['lstm_units'],
-                                           learning_rate=model['lr'])
+                                           learning_rate=model['learning_rate'])
 
                 print("\nmodel:", count, "/", len(self.models) * self.walks['N_WALKS'], "\nwalk:", walk, "\n")
                 histories.append(regressor.fit(x=walk_data['TRAIN'][0],
@@ -212,28 +186,140 @@ class ModelFactory:
                                                validation_data=walk_data['VALIDATION'],
                                                callbacks=callbacks))
 
-                pred = regressor.predict(x=walk_data['TEST'][0])
-                y = walk_data['TEST'][1]
+                walk_data['REGRESSOR'] = regressor
 
-                walk_data['RESULTS'] = {}
-                walk_data['RESULTS']['PRED'] = regressor.predict(x=walk_data['TEST'][0])
-                walk_data['RESULTS']['METRICS'] = self.metrics(y=y, pred=pred)
-                self.walks['RESULTS']['METRICS'] += walk_data['RESULTS']['METRICS'] / self.walks['N_WALKS']
+            model_path = os.path.join(result_path, 'model_{}'.format(count - 1))
 
-            results = np.hstack((results, self.walks['RESULTS']['METRICS']))
+            self.evaluate(data='VALIDATION', result_path=model_path)
 
+            json.dump(model, open(os.path.join(model_path + "_VALIDATION", 'params.json'), 'w'))
+
+            results = np.vstack((results, self.walks['RESULTS']['METRICS'].values))
             count += 1
 
-        results = results[1:]
+        elapsed = time.time() - start
+        hours = int(elapsed // 3600)
+        mins = int((elapsed - (hours * 3600)) // 60)
+        secs = int((elapsed - (hours * 3600) - (mins * 60)))
+
+        if hours < 10: hours = "0" + str(hours)
+        else:hours = str(hours)
+
+        if mins < 10: mins = "0" + str(mins)
+        else:mins = str(mins)
+
+        if secs < 10: secs = "0" + str(secs)
+        else: secs = str(secs)
+
+        fp = open(os.path.join(result_path, 'elapsed.txt'), 'w')
+        fp.write("Done in {}:{}:{}".format(hours, mins, secs))
+
+        print()
+        print("Done in {}:{}:{}".format(hours, mins, secs))
+        print("All results:")
+        results = pd.DataFrame(data=results[1:], columns=['MAPE', 'RMSE', 'MSE', 'MAE', 'MSLE', 'CSM', 'LCE'])
+        results.to_csv(path_or_buf=os.path.join(result_path, 'all_models_overall.csv'), sep='\t')
         print(results)
 
     def fit(self):
 
         pass
 
+    def evaluate(self, data='TEST', result_path='./evaluate_results'):
+
+        result_path = result_path + "_" + data
+
+        if not os.path.exists(result_path):
+
+            os.mkdir(result_path)
+
+        self.walks['RESULTS'] = {}
+        self.walks['RESULTS']['METRICS'] = pd.DataFrame(data=np.asarray([[0, 0, 0, 0, 0, 0, 0]]), columns=['MAPE', 'RMSE', 'MSE', 'MAE', 'MSLE', 'CSM', 'LCE'])
+
+        n_walks = self.walks['N_WALKS']
+        walk_path = os.path.join(result_path, 'walk')
+
+        print('Evaluating regressor on {} set:'.format(data))
+        for walk in range(n_walks):
+
+            walk_data = self.walks['WALK_{}'.format(walk)]
+            self.evaluate_walk(walk=walk, data=data, result_path=walk_path)
+
+            print("Walk {} results: ".format(walk))
+            print(walk_data['RESULTS']['METRICS'])
+            print()
+
+            self.walks['RESULTS']['METRICS'] += walk_data['RESULTS']['METRICS'] / self.walks['N_WALKS']
+
+        self.walks['RESULTS']['METRICS'].to_csv(path_or_buf=os.path.join(result_path, 'overall.csv'), sep='\t')
+
+        print("Overall results: ")
+        print(self.walks['RESULTS']['METRICS'])
+        print()
+
+    def evaluate_walk(self, walk, data='TEST', result_path='./'):
+
+        result_path = result_path + "_" + str(walk)
+
+        if not os.path.exists(result_path):
+
+            os.mkdir(result_path)
+
+        walk_data = self.walks['WALK_{}'.format(walk)]
+        regressor = walk_data['REGRESSOR']
+
+        pred = regressor.predict(x=walk_data[data][0])
+        y = walk_data[data][1]
+
+        walk_data['RESULTS'] = {}
+        walk_data['RESULTS']['PRED'] = pred
+        walk_data['RESULTS']['METRICS'] = metrics(y=y, pred=pred)
+
+        walk_data['RESULTS']['METRICS'].to_csv(path_or_buf=os.path.join(result_path, 'walk_{}.csv'.format(walk)), sep='\t')
+
+        self.plot_prediction_walk(walk=walk, data=data, result_path=result_path)
+
+        return
+
     def predict(self):
 
         pass
+
+    def plot_prediction_walk(self, walk, data='TEST', result_path='./'):
+
+        walk_data = self.walks['WALK_{}'.format(walk)]
+        y = walk_data[data][1]
+        pred = walk_data['RESULTS']['PRED']
+
+        if self.norm_options["METHOD"] == stock_dataset.NORM_MIN_MAX:
+
+            low = self.norm_options["HIGH_LOW"][0]
+            high = self.norm_options["HIGH_LOW"][1]
+
+            y = (((y - low) / (high - low)) * (walk_data['STD_PARAMS']['MAX'][0] - walk_data['STD_PARAMS']['MIN'][0]) + walk_data['STD_PARAMS']['MIN'][0])
+            pred = (((pred - low) / (high - low)) * (walk_data['STD_PARAMS']['MAX'][0] - walk_data['STD_PARAMS']['MIN'][0]) + walk_data['STD_PARAMS']['MIN'][0])
+
+        elif self.norm_options["METHOD"] == stock_dataset.NORM_Z_SCORE:
+
+            y = (y * walk_data["STD_PARAMS"]["STD"]) + walk_data["STD_PARAMS"]["MEAN"]
+            pred = (pred * walk_data["STD_PARAMS"]["STD"]) + walk_data["STD_PARAMS"]["MEAN"]
+
+        plt.figure()
+        plt.plot(y, color='red', label='Real {} Stock Price'.format(self.stock_name))
+        plt.plot(pred, color='blue', label='Predicted {} Stock Price'.format(self.stock_name))
+        plt.title('{} Stock Price Prediction - walk {}'.format(self.stock_name, walk))
+        plt.xlabel('Time')
+        plt.ylabel('{} Stock Price'.format(self.stock_name))
+        plt.show()
+
+        result_path = os.path.join(result_path, 'walk_{}.png'.format(walk))
+        plt.savefig(fname=result_path, dpi=100)
+
+        # if self.label == 'LR':
+        #
+        #     close = self.dataset["Close"].values[self.lookback: -1]
+        #     perc_pred = (pred * walk_data['STD_PARAMS']['STD'][0]) + walk_data['STD_PARAMS']['MEAN'][0]
+        #     close_pred = (perc_pred * close) + close
 
 
         # result = []
@@ -305,19 +391,6 @@ class ModelFactory:
         #
         # return result, history_collection, best_regressor
 
-
-    def plot_prediction(self, y, pred):
-
-        plt.plot(y, color='red', label='Real {} Stock Price'.format(self.stock_name))
-        plt.plot(pred, color='blue', label='Predicted {} Stock Price'.format(self.stock_name))
-        plt.title('{} Stock Price Prediction'.format(self.stock_name))
-        plt.xlabel('Time')
-        plt.ylabel('{} Stock Price'.format(self.stock_name))
-        plt.show()
-
-
-
-
     # def plot_prediction_close(self, real, regressor, x, y):
     #
     #     n_walks = self.walks['N_WALKS']
@@ -350,3 +423,39 @@ class ModelFactory:
     #                   y_test_set[i])
     #
     #     return prediction, y
+
+
+def metrics(y, pred):
+
+    mape = tensorflow.keras.metrics.MeanAbsolutePercentageError()
+    rmse = tensorflow.keras.metrics.RootMeanSquaredError()
+    mse = tensorflow.keras.metrics.MeanSquaredError()
+    mae = tensorflow.keras.metrics.MeanAbsoluteError()
+    msle = tensorflow.keras.metrics.MeanSquaredLogarithmicError()
+    csm = tensorflow.keras.metrics.CosineSimilarity()
+    lce = tensorflow.keras.metrics.LogCoshError()
+
+    mape.update_state(y, pred)
+    rmse.update_state(y, pred)
+    mse.update_state(y, pred)
+    mae.update_state(y, pred)
+    msle.update_state(y, pred)
+    csm.update_state(y, pred)
+    lce.update_state(y, pred)
+
+    # print("MAPE:", mape.result().numpy())
+    # print("RMSE:", rmse.result().numpy())
+    # print("MSE:", mse.result().numpy())
+    # print("MAE:", mae.result().numpy())
+    # print("MSLE:", msle.result().numpy())
+    # print("CSM:", csm.result().numpy())
+    # print("LCE:", lce.result().numpy())
+
+    columns = ['MAPE', 'RMSE', 'MSE', 'MAE', 'MSLE', 'CSM', 'LCE']
+    data = np.asarray([[mape.result().numpy(), rmse.result().numpy(), mse.result().numpy(), mae.result().numpy(), msle.result().numpy(), csm.result().numpy(), lce.result().numpy()]])
+
+    return pd.DataFrame(data=data, columns=columns)
+
+
+
+
