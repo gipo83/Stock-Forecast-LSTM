@@ -31,6 +31,7 @@ class ModelFactory:
         self.stock_name = stock_name
         self.dataset = stock_dataset.load_dataset(dataset_name=dataset_name, stock_name=self.stock_name)
         self.dataset = stock_dataset.repair_dataset(dataset=self.dataset, nafix=stock_dataset.CHK_FILL)
+        stock_dataset.check_dataset(self.dataset)
         self.walks = stock_dataset.pre_processing(dataset=self.dataset, rem_features=rem_features, lookback=lookback, split=split, options=self.options, label=label, norm_options=norm_options)
         self.models = []
 
@@ -187,6 +188,7 @@ class ModelFactory:
                                                callbacks=callbacks))
 
                 walk_data['REGRESSOR'] = regressor
+                count += 1
 
             model_path = os.path.join(result_path, 'model_{}'.format(count - 1))
 
@@ -195,7 +197,6 @@ class ModelFactory:
             json.dump(model, open(os.path.join(model_path + "_VALIDATION", 'params.json'), 'w'))
 
             results = np.vstack((results, self.walks['RESULTS']['METRICS'].values))
-            count += 1
 
         elapsed = time.time() - start
         hours = int(elapsed // 3600)
@@ -269,6 +270,7 @@ class ModelFactory:
         regressor = walk_data['REGRESSOR']
 
         pred = regressor.predict(x=walk_data[data][0])
+        pred = np.reshape(pred, (pred.shape[0],))
         y = walk_data[data][1]
 
         walk_data['RESULTS'] = {}
@@ -291,23 +293,35 @@ class ModelFactory:
         y = walk_data[data][1]
         pred = walk_data['RESULTS']['PRED']
 
-        if self.norm_options["METHOD"] == stock_dataset.NORM_MIN_MAX:
+        if self.options & stock_dataset.PRE_NORMALIZE:
 
-            low = self.norm_options["HIGH_LOW"][0]
-            high = self.norm_options["HIGH_LOW"][1]
+            if self.norm_options["METHOD"] == stock_dataset.NORM_MIN_MAX:
 
-            y = (((y - low) / (high - low)) * (walk_data['STD_PARAMS']['MAX'][0] - walk_data['STD_PARAMS']['MIN'][0]) + walk_data['STD_PARAMS']['MIN'][0])
-            pred = (((pred - low) / (high - low)) * (walk_data['STD_PARAMS']['MAX'][0] - walk_data['STD_PARAMS']['MIN'][0]) + walk_data['STD_PARAMS']['MIN'][0])
+                low = self.norm_options["HIGH_LOW"][0]
+                high = self.norm_options["HIGH_LOW"][1]
 
-        elif self.norm_options["METHOD"] == stock_dataset.NORM_Z_SCORE:
+                y = (((y - low) / (high - low)) * (walk_data['STD_PARAMS']['MAX'][0] - walk_data['STD_PARAMS']['MIN'][0]) + walk_data['STD_PARAMS']['MIN'][0])
+                pred = (((pred - low) / (high - low)) * (walk_data['STD_PARAMS']['MAX'][0] - walk_data['STD_PARAMS']['MIN'][0]) + walk_data['STD_PARAMS']['MIN'][0])
 
-            y = (y * walk_data["STD_PARAMS"]["STD"]) + walk_data["STD_PARAMS"]["MEAN"]
-            pred = (pred * walk_data["STD_PARAMS"]["STD"]) + walk_data["STD_PARAMS"]["MEAN"]
+            elif self.norm_options["METHOD"] == stock_dataset.NORM_Z_SCORE:
+
+                y = (y * walk_data["STD_PARAMS"]["STD"][0]) + walk_data["STD_PARAMS"]["MEAN"][0]
+                pred = (pred * walk_data["STD_PARAMS"]["STD"][0]) + walk_data["STD_PARAMS"]["MEAN"][0]
+
+        # if self.options & stock_dataset.PRE_DIFFERENCING:
+        #
+        #     y = pd.DataFrame(data=y, columns=['Val'])
+        #     y = stock_dataset.rev_difx(y, order=5)
+        #     y = y['Val'].values
+        #
+        #     pred = pd.DataFrame(data=pred, columns=['Val'])
+        #     pred = stock_dataset.rev_difx(pred, order=5)
+        #     pred = pred['Val'].values
 
         plt.figure()
-        plt.plot(y, color='red', label='Real {} Stock Price'.format(self.stock_name))
-        plt.plot(pred, color='blue', label='Predicted {} Stock Price'.format(self.stock_name))
-        plt.title('{} Stock Price Prediction - walk {}'.format(self.stock_name, walk))
+        plt.plot(y, color='red', label='Real {} Stock Prices'.format(self.stock_name))
+        plt.plot(pred, color='blue', label='Predicted {} Stock Prices'.format(self.stock_name))
+        plt.title('{} Stock Prices Prediction - walk {}'.format(self.stock_name, walk))
         plt.xlabel('Time')
         plt.ylabel('{} Stock Price'.format(self.stock_name))
         plt.show()

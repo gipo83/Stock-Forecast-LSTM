@@ -16,10 +16,11 @@ CHK_DROP = 1
 CHK_FILL = 2
 
 PRE_NORMALIZE = 1
-PRE_INCLUDE_DIFF_HIGH_LOW = 2
-PRE_INCLUDE_DIFF_CLOSE_OPEN = 4
-PRE_INCLUDE_LR = 8
-PRE_INCLUDE_TI = 16
+PRE_DIFFERENCING = 2
+PRE_INCLUDE_DIFF_HIGH_LOW = 4
+PRE_INCLUDE_DIFF_CLOSE_OPEN = 8
+PRE_INCLUDE_LR = 16
+PRE_INCLUDE_TI = 32
 
 NORM_MIN_MAX = 0
 NORM_Z_SCORE = 1
@@ -131,10 +132,10 @@ def check_dataset(dataset):
     print("Low open:" + str(low_open_check))
     print("Low close:" + str(low_close_check))
 
-    return final_check
+    return final_check, high_low_check, high_open_check, high_close_check, low_open_check, low_close_check
 
 
-def repair_dataset(dataset, nafix=CHK_NONE):
+def repair_dataset(dataset, problems= None, nafix=CHK_NONE):
 
     if nafix == CHK_DROP:
 
@@ -160,6 +161,24 @@ def get_sequences(arr, window, padding=[]):
     x = np.lib.stride_tricks.as_strided(arr, shape=shape, strides=strides)
 
     return x, y
+
+
+def difx(s, order=0):
+
+    for i in range(order):
+
+        s = s.diff().fillna(method='bfill')
+
+    return s
+
+
+def rev_difx(s, order=0):
+
+    for i in range(order):
+
+        s = s.cumsum()
+
+    return s
 
 
 def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), options=0, label='Close', norm_options={"METHOD": NORM_MIN_MAX, "HIGH_LOW": (0, 1)}):
@@ -256,7 +275,7 @@ def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), opt
 
         else:
 
-            print("Warning!\n Cannot delete label {} column.".format(label))
+            print("Warning!\nCannot delete label {} column.".format(label))
 
     y = dataset[label]
     del dataset[label]
@@ -279,6 +298,12 @@ def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), opt
         walks['WALK_{}'.format(n_walks)]['TRAIN'] = dataset[str(year):str(year + train - 1)]
         walks['WALK_{}'.format(n_walks)]['VALIDATION'] = dataset[str(year + train):str(year + train + val - 1)]
         walks['WALK_{}'.format(n_walks)]['TEST'] = dataset[str(year + train + val):str(year + train + val + test - 1)]
+
+        if PRE_DIFFERENCING & options:
+
+            walks['WALK_{}'.format(n_walks)]['TRAIN'] = difx(walks['WALK_{}'.format(n_walks)]['TRAIN'], 5)
+            walks['WALK_{}'.format(n_walks)]['VALIDATION'] = difx(walks['WALK_{}'.format(n_walks)]['VALIDATION'], 5)
+            walks['WALK_{}'.format(n_walks)]['TEST'] = difx(walks['WALK_{}'.format(n_walks)]['TEST'], 5)
 
         n_walks += 1
 
@@ -328,11 +353,11 @@ def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), opt
 
             train = walks['WALK_{}'.format(walk)]['TRAIN'].values
             walks['WALK_{}'.format(walk)]['TRAIN'] = get_sequences(arr=train, window=lookback)
-            padding = train[:-lookback]
+            padding = train[-lookback:]
 
             validation = walks['WALK_{}'.format(walk)]['VALIDATION'].values
             walks['WALK_{}'.format(walk)]['VALIDATION'] = get_sequences(arr=validation, window=lookback, padding=padding)
-            padding = validation[:-lookback]
+            padding = validation[-lookback:]
 
             test = walks['WALK_{}'.format(walk)]['TEST'].values
             walks['WALK_{}'.format(walk)]['TEST'] = get_sequences(arr=test, window=lookback, padding=padding)
