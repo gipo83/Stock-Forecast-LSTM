@@ -43,22 +43,41 @@ label = "IBM_LR" #"IBM_Close"
 
 You can make the instance of object with this line of code:
 ```
-mmf = MultiModelFactory(stock_name_list=stock_name,rem_features=rem_features, lookback=lookback, split=split, options=pre_processing_options, label=label, norm_options=norm_options)
+mmf = MultiModelFactory(stock_name_list = stock_name,
+                        rem_features = rem_features, 
+                        lookback = lookback, 
+                        split = split, 
+                        options = pre_processing_options, 
+                        label = label, 
+                        norm_options = norm_options)
 ```
 
-Select the values that you want change in grid search with the follow code:
+Choice the values that you want change in grid search with the follow code:
 ```
-mmf.add_grid_search(models=[1], epochs=[50,70], batches=[16,32], learning_rates=[0.001], learning_rate_steps=[10], learning_rate_decays=[0.90], dense_layers=[1], lstm_units=[64])
+mmf.add_grid_search(models = [1], 
+                    epochs = [50, 70], 
+                    batches = [16, 32], 
+                    learning_rates = [0.001, 0.005], 
+                    learning_rate_steps = [10], 
+                    learning_rate_decays = [0.90], 
+                    dense_layers = [1],                 # number of dense layer added at the end of net before the last one
+                    lstm_units = [64])                  # number of units in all lstm layers in the net
 ```
 The number of model indicates the model in our list of model tested (1 is the better).
 
 If you want add other test in grid search you can: 
 ```
-mmf.add_grid_search(models=[2], epochs=[50], batches=[64], learning_rates=[0.01], learning_rate_steps=[10], learning_rate_decays=[0.90], dense_layers=[1], lstm_units=[64])
+mmf.add_grid_search(models = [2], 
+                    epochs = [50], 
+                    batches = [64], 
+                    learning_rates = [0.01], 
+                    learning_rate_steps = [10], 
+                    learning_rate_decays = [0.90], 
+                    dense_layers = [1], 
+                    lstm_units = [64])
 ```
 
 To start with training you just have to:
 ```
 mmf.grid_search(data='VALIDATION')
 ```
-
