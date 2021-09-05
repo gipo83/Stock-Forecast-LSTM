@@ -3,7 +3,7 @@ The goal of this project is generating a LSTM neural network with Keras able to 
 
 We consider the input dataset with these features: Open, Low, High, Close, Volume, Name.
 
-To start import download project and import library:
+First of all download the project and import library:
 ```
 import stockForecastLSTM
 ```
