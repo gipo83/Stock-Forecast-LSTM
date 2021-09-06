@@ -1,6 +1,9 @@
 from stock_dataset import stock_dataset
 from stock_dataset.stock_regressors import ModelFactory
+from stock_dataset.stock_regressors import guessing_test
+from stock_dataset.stock_regressors import metrics
 import numpy as np
+import pandas as pd
 
 
 # [ MAIN ]
@@ -8,34 +11,58 @@ def main():
 
     stock_name = 'IBM'
     rem_features = ["High", "Low", "Volume", "Open", "Close"]
-    lookback = 15
+    lookback = 60
     split = (3, 1, 1)
     high_low = (-1, 1)
-    pre_processing_options = [stock_dataset.PRE_NORMALIZE,
-                              stock_dataset.PRE_INCLUDE_LR]
+
+    pre_processing_options = [stock_dataset.PRE_INCLUDE_TI,
+                              stock_dataset.PRE_INCLUDE_LR,
+                              stock_dataset.PRE_NORMALIZE]
 
     norm_options = {
 
         "METHOD": stock_dataset.NORM_Z_SCORE,
-        "HIGH_LOW": high_low
+        "HIGH_LOW": high_low,
+        "ORDER": 1
 
     }
 
     # options = 0
     # for opt in pre_processing_options:
-    #      options = options | opt
+    #       options = options | opt
     #
     # dataset = stock_dataset.load_dataset(stock_name=stock_name)
-    # stock_dataset.check_dataset(dataset=dataset)
     # dataset = stock_dataset.repair_dataset(dataset=dataset, nafix=stock_dataset.CHK_FILL)
+    # stock_dataset.check_dataset(dataset=dataset)
     #
     # stock_dataset.plot_stock(dataset=dataset, stock_name=stock_name, variable_name='Open', split=(3, 1, 1))
-
-    # dataset = stock_dataset.pre_processing(dataset=dataset, rem_features=rem_features, lookback=lookback, split=(3, 1, 1), options=options, label='LR')
+    #
+    # dataset = stock_dataset.pre_processing(dataset=dataset, rem_features=rem_features, lookback=lookback, split=(3, 1, 1), options=options, label='Close')
+    #
+    # print(dataset['WALK_0']['TRAIN'][1].shape)
+    # print(dataset['WALK_0']['VALIDATION'][1].shape)
+    # print(dataset['WALK_0']['TEST'][1].shape)
 
     mf = ModelFactory(rem_features=rem_features, lookback=lookback, split=split, options=pre_processing_options, label="LR", norm_options=norm_options)
-    mf.add_grid_search(models=[1], epochs=[50], batches=[16], learning_rates=[0.001], learning_rate_steps=[5], learning_rate_decays=[0.90], dense_layers=[3], lstm_units=[50])
-    mf.grid_search()
+    #mf.add_grid_search(models=[2], epochs=[70], batches=[16, 32], learning_rates=[0.01, 0.001], learning_rate_steps=[10, 5], learning_rate_decays=[0.90], dense_layers=[1, 2], lstm_units=[64, 128])
+    #mf.add_grid_search(models=[2], epochs=[70], batches=[32], learning_rates=[0.01], learning_rate_steps=[5], learning_rate_decays=[0.90], dense_layers=[1], lstm_units=[64])
+    mf.grid_search(result_path='./grid_search_results_70')
+
+    set = "VALIDATION"
+    for i in range(mf.walks["N_WALKS"]):
+        if i == 0:
+            y = mf.walks["WALK_{}".format(i)]['DENORM'][set]
+            x = mf.walks["WALK_{}".format(i)]["RESULTS"]["DENORM"]
+        else:
+            y = np.hstack((y, mf.walks["WALK_{}".format(i)]['DENORM'][set]))
+            x = np.hstack((x, mf.walks["WALK_{}".format(i)]["RESULTS"]["DENORM"]))
+
+    met = metrics(y, x)
+    print(met["RMSE"].values)
+    print(met["MAPE"].values)
+    y = y.reshape(-1, 1)
+    offset = 0.05
+    guessing_test(x, y, offset)
 
     return 0
 
