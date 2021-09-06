@@ -9,18 +9,18 @@ import stockForecastLSTM
 ```
 
 Some informations about preprocessing are:
-`remove features`: list of the features that you want remove before training;
-`lookback`: sequencies' length;
-`split`: tuple with 3 value that indicate the length in years of training set, validation set and test set;
-`preprocessing options`: constant values to set the desired operations of preprocessing;
-  - `PRE_NORMALIZE`: normalization of data;
-  - `PRE_INCLUDE_LR`: add the 10 predecessor LR value for each row;
-  - `PRE_INCLUDE_TI`: add technical indicators (EMA, Stochastic, ROC, RSI, AccDO, MACD, Williams, Disparity 5, Disparity 10);
-`normalization options`: values to set a king of normalization in preprocessing step (it will be executed only whether in preprocessing options is requested);
-  - `METHOD`: method of normalization (NORM_MIN_MAX or NORM_Z_SCORE);
-  - `HIGH_LOW`: tuple for min max normalization;
-`stock name`: list of stocks that you want include in training;
-`label`: value to predict.
+  - `remove features`: list of the features that you want remove before training;
+  - `lookback`: sequencies' length;
+  - `split`: tuple with 3 value that indicate the length in years of training set, validation set and test set;
+  - `preprocessing options`: constant values to set the desired operations of preprocessing;
+    - `PRE_NORMALIZE`: normalization of data;
+    - `PRE_INCLUDE_LR`: add the 10 predecessor LR value for each row;
+    - `PRE_INCLUDE_TI`: add technical indicators (EMA, Stochastic, ROC, RSI, AccDO, MACD, Williams, Disparity 5, Disparity 10);
+  - `normalization options`: values to set a king of normalization in preprocessing step (it will be executed only whether in preprocessing options is requested);
+    - `METHOD`: method of normalization (NORM_MIN_MAX or NORM_Z_SCORE);
+    - `HIGH_LOW`: tuple for min max normalization;
+  - `stock name`: list of stocks that you want include in training;
+  - `label`: value to predict.
 
 We show an example below
 ```
