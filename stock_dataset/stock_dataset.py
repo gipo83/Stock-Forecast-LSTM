@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-import stock_dataset.stock_dataset
+#import stock_dataset.stock_dataset
 
 DATASETS_DIR = '.\\stock_dataset\\datasets'
 DATASETS_FILE_NAMES = {
