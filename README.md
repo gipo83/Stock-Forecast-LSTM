@@ -3,9 +3,9 @@ The goal of this project is generating a LSTM neural network with Keras able to 
 
 We consider the input dataset with these features: Open, Low, High, Close, Volume, Name.
 
-First of all download the project and import library:
+First, download the project and import required packages:
 ```
-import stockForecastLSTM
+from stock_dataset.stock_regressors import ModelFactory
 ```
 
 Some informations about preprocessing are:
@@ -37,47 +37,47 @@ norm_options = {
     "HIGH_LOW": high_low
 }
 
-stock_name = ["IBM"]
-label = "IBM_LR" #"IBM_Close"
+stock_name = "IBM"
+label = "LR" #"Close"
 ```
 
 You can make the instance of object with this line of code:
 ```
-mmf = MultiModelFactory(stock_name_list = stock_name,
-                        rem_features = rem_features, 
-                        lookback = lookback, 
-                        split = split, 
-                        options = pre_processing_options, 
-                        label = label, 
-                        norm_options = norm_options)
+mf = ModelFactory(stock_name_list = stock_name,
+                  rem_features = rem_features, 
+                  lookback = lookback, 
+                  split = split, 
+                  options = pre_processing_options, 
+                  label = label, 
+                  norm_options = norm_options)
 ```
 
 Choice the values that you want change in grid search with the follow code:
 ```
-mmf.add_grid_search(models = [1], 
-                    epochs = [50, 70], 
-                    batches = [16, 32], 
-                    learning_rates = [0.001, 0.005], 
-                    learning_rate_steps = [10], 
-                    learning_rate_decays = [0.90], 
-                    dense_layers = [1],                 # number of dense layer added at the end of net before the last one
-                    lstm_units = [64])                  # number of units in all lstm layers in the net
+mf.add_grid_search(models = [1], 
+                   epochs = [50, 70], 
+                   batches = [16, 32], 
+                   learning_rates = [0.001, 0.005], 
+                   learning_rate_steps = [10], 
+                   learning_rate_decays = [0.90], 
+                   dense_layers = [1],                 # number of dense layer added at the end of net before the last one
+                   lstm_units = [64])                  # number of units in all lstm layers in the net
 ```
 The number of model indicates the model in our list of model tested (1 is the better).
 
 If you want add other test in grid search you can: 
 ```
-mmf.add_grid_search(models = [2], 
-                    epochs = [50], 
-                    batches = [64], 
-                    learning_rates = [0.01], 
-                    learning_rate_steps = [10], 
-                    learning_rate_decays = [0.90], 
-                    dense_layers = [1], 
-                    lstm_units = [64])
+mf.add_grid_search(models = [2], 
+                   epochs = [50], 
+                   batches = [64], 
+                   learning_rates = [0.01], 
+                   learning_rate_steps = [10], 
+                   learning_rate_decays = [0.90], 
+                   dense_layers = [1], 
+                   lstm_units = [64])
 ```
 
 To start with training you just have to:
 ```
-mmf.grid_search(data='VALIDATION')
+mf.grid_search(data='VALIDATION')
 ```
