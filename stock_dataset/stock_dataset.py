@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 
 #import stock_dataset.stock_dataset
 
-DATASETS_DIR = '.\\stock_dataset\\datasets'
+DATASETS_DIR = 'stock_dataset'
+DATASETS_SUB_DIR = 'datasets'
+
 DATASETS_FILE_NAMES = {
 
     "stocks_2006_2018": "all_stocks_2006-01-01_to_2018-01-01.csv"
@@ -33,7 +35,7 @@ DIFF_AFTER = 1
 def load_dataset(dataset_name=list(DATASETS_FILE_NAMES.keys())[0],  stock_name=None, split_year_train_test=None):
 
     dataset_file_name = DATASETS_FILE_NAMES[dataset_name]
-    dataset = pd.read_csv(os.path.join(DATASETS_DIR, dataset_file_name), index_col='Date', parse_dates=['Date'])
+    dataset = pd.read_csv(os.path.join(DATASETS_DIR, DATASETS_SUB_DIR, dataset_file_name), index_col='Date', parse_dates=['Date'])
 
     if stock_name is not None:
 
