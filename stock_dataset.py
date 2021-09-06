@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+import stock_dataset.stock_dataset
 
 DATASETS_DIR = '.\\stock_dataset\\datasets'
 DATASETS_FILE_NAMES = {
@@ -24,6 +25,9 @@ PRE_INCLUDE_TI = 32
 
 NORM_MIN_MAX = 0
 NORM_Z_SCORE = 1
+
+DIFF_BEFORE = 0
+DIFF_AFTER = 1
 
 
 def load_dataset(dataset_name=list(DATASETS_FILE_NAMES.keys())[0],  stock_name=None, split_year_train_test=None):
@@ -167,7 +171,7 @@ def difx(s, order=0):
 
     for i in range(order):
 
-        s = s.diff().fillna(method='bfill')
+        s = s.diff().combine_first(s)
 
     return s
 
@@ -181,7 +185,31 @@ def rev_difx(s, order=0):
     return s
 
 
-def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), options=0, label='Close', norm_options={"METHOD": NORM_MIN_MAX, "HIGH_LOW": (0, 1)}):
+def rolling_window(a, window, include_last=False):
+    tmp = -1
+
+    if include_last:
+        tmp = 0
+
+    padding = np.zeros(window - (1 + tmp))
+    a = np.hstack((padding, a))
+    shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
+    strides = a.strides + (a.strides[-1],)
+
+    if include_last:
+
+        res = np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
+
+    else:
+
+        res = np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)[:-1]
+
+    return res
+
+
+def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), options=0, label='Close', norm_options={"METHOD": NORM_MIN_MAX, "HIGH_LOW": (0, 1), "ORDER": 0}):
+
+    dataset = dataset.copy(deep=True)
 
     def ema(arr, window):
 
@@ -251,8 +279,12 @@ def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), opt
 
     if PRE_INCLUDE_LR & options:
 
-        lr = ((Ct - Ot) / Ot) * 100
+        lr = ((Ct - Ot) / Ot)
         dataset["LR"] = lr
+
+        lr = rolling_window(lr, window)
+        for i in range(lr.shape[1]):
+            dataset["LR_{}".format(i)] = lr[:, i]
 
     if PRE_INCLUDE_DIFF_HIGH_LOW & options:
 
@@ -299,11 +331,11 @@ def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), opt
         walks['WALK_{}'.format(n_walks)]['VALIDATION'] = dataset[str(year + train):str(year + train + val - 1)]
         walks['WALK_{}'.format(n_walks)]['TEST'] = dataset[str(year + train + val):str(year + train + val + test - 1)]
 
-        if PRE_DIFFERENCING & options:
+        if PRE_DIFFERENCING & options and norm_options["DIFF_PER"] == DIFF_BEFORE:
 
-            walks['WALK_{}'.format(n_walks)]['TRAIN'] = difx(walks['WALK_{}'.format(n_walks)]['TRAIN'], 5)
-            walks['WALK_{}'.format(n_walks)]['VALIDATION'] = difx(walks['WALK_{}'.format(n_walks)]['VALIDATION'], 5)
-            walks['WALK_{}'.format(n_walks)]['TEST'] = difx(walks['WALK_{}'.format(n_walks)]['TEST'], 5)
+            walks['WALK_{}'.format(n_walks)]['TRAIN'] = difx(walks['WALK_{}'.format(n_walks)]['TRAIN'], norm_options['ORDER'])
+            walks['WALK_{}'.format(n_walks)]['VALIDATION'] = difx(walks['WALK_{}'.format(n_walks)]['VALIDATION'], norm_options['ORDER'])
+            walks['WALK_{}'.format(n_walks)]['TEST'] = difx(walks['WALK_{}'.format(n_walks)]['TEST'], norm_options['ORDER'])
 
         n_walks += 1
 
@@ -338,6 +370,12 @@ def pre_processing(dataset, rem_features=[], lookback=None, split=(3, 1, 1), opt
                 train = (train.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
                 validation = (validation.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
                 test = (test.values - train_stats.iloc[1, :].values) / train_stats.iloc[2, :].values
+
+            if PRE_DIFFERENCING & options and norm_options["DIFF_PER"] == DIFF_AFTER:
+
+                train = difx(pd.DataFrame(train), norm_options["ORDER"]).values
+                validation = difx(pd.DataFrame(validation), norm_options["ORDER"]).values
+                test = difx(pd.DataFrame(test), norm_options["ORDER"]).values
 
             walks['WALK_{}'.format(walk)]['TRAIN'] = get_sequences(arr=train, window=lookback)
             padding = train[-lookback:]

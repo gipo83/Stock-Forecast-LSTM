@@ -88,22 +88,15 @@ class ModelFactory:
 
         elif version == 2:
 
-            regressor.add(LSTM(units=lstm_units, return_sequences=True, input_shape=input_shape))
-            regressor.add(tensorflow.keras.layers.LeakyReLU(alpha=0.2))
-
-            # Adding a second LSTM
-            regressor.add(LSTM(units=lstm_units, return_sequences=True))
-            regressor.add(tensorflow.keras.layers.LeakyReLU(alpha=0.2))
-
-            # Adding a third LSTM
-            regressor.add(LSTM(units=lstm_units, return_sequences=True))
-            regressor.add(Dropout(0.2))
-
-            # Adding a fourth LSTM
-            regressor.add(LSTM(units=lstm_units))
-            regressor.add(Dropout(0.2))
+            regressor.add(LSTM(units=lstm_units, input_shape=input_shape))
+            regressor.add(Dropout(0.4))
 
         elif version == 3:
+
+            regressor.add(tensorflow.keras.layers.Bidirectional(LSTM(units=lstm_units, input_shape=input_shape)))
+            regressor.add(Dropout(0.2))
+
+        elif version == 4:
 
             regressor.add(LSTM(units=lstm_units, return_sequences=True, input_shape=input_shape))
             regressor.add(BatchNormalization())
@@ -123,7 +116,7 @@ class ModelFactory:
         # Output Layer
         for _ in range(dense_layers):
 
-            regressor.add(Dense(units=1024, activation='tanh'))
+            regressor.add(Dense(units=512, activation='tanh'))
 
         regressor.add(Dense(units=1))
 
@@ -185,15 +178,15 @@ class ModelFactory:
                                                epochs=model['epochs'],
                                                batch_size=model['batch'],
                                                validation_data=walk_data['VALIDATION'],
-                                               callbacks=callbacks))
+                                               callbacks=callbacks,
+                                               shuffle=False))
 
                 walk_data['REGRESSOR'] = regressor
+
                 count += 1
 
             model_path = os.path.join(result_path, 'model_{}'.format(count - 1))
-
             self.evaluate(data='VALIDATION', result_path=model_path)
-
             json.dump(model, open(os.path.join(model_path + "_VALIDATION", 'params.json'), 'w'))
 
             results = np.vstack((results, self.walks['RESULTS']['METRICS'].values))
@@ -281,17 +274,95 @@ class ModelFactory:
 
         self.plot_prediction_walk(walk=walk, data=data, result_path=result_path)
 
-        return
-
     def predict(self):
 
         pass
 
+    def func(self):
+
+        return 0, 0
+
     def plot_prediction_walk(self, walk, data='TEST', result_path='./'):
+
+        y_denorm, pred_denorm = self.denormalize_pred_walk(walk=walk, data=data)
+
+        start_year = self.dataset.index[0].year + walk
+        train = self.split[0]
+        val = self.split[1]
+        test = self.split[2]
+
+        if self.label == 'LR':
+
+            if data == 'TRAIN':
+
+                close = self.dataset[str(start_year):str(start_year + train - 1)]['Close'].values
+                close = close[self.lookback:]
+
+            elif data == 'VALIDATION':
+
+                close = self.dataset[str(start_year + train):str(start_year + train + val - 1)]['Close'].values
+
+            else:
+
+                close = self.dataset[str(start_year + train + val):str(start_year + train + val + test - 1)]['Close'].values
+
+            close_one_day_before = close[:-1]
+            pred_close = pred_denorm[:-1] * close_one_day_before + close_one_day_before
+
+            plt.figure()
+            plt.plot(close[1:], color='red', label='Real {} Stock Prices'.format(self.stock_name))
+            plt.plot(pred_close, color='blue', label='Predicted {} Stock Prices'.format(self.stock_name))
+            plt.title('{} Stock Prices Prediction - walk {}'.format(self.stock_name, walk))
+            plt.xlabel('Time')
+            plt.ylabel('{} Stock Price'.format(self.stock_name))
+
+            # plt.show()
+
+            path = os.path.join(result_path, 'walk_{}_close_pred.png'.format(walk))
+            plt.savefig(fname=path, dpi=100)
 
         walk_data = self.walks['WALK_{}'.format(walk)]
         y = walk_data[data][1]
         pred = walk_data['RESULTS']['PRED']
+
+        plt.figure()
+        plt.subplot(2, 1, 1)
+        plt.plot(y_denorm, color='red', label='Real {} Stock Prices'.format(self.stock_name))
+        plt.plot(pred_denorm, color='blue', label='Predicted {} Stock Prices'.format(self.stock_name))
+        plt.title('{} Stock Prices Prediction - walk {}'.format(self.stock_name, walk))
+        plt.xlabel('Time')
+        plt.ylabel('{} Stock Price'.format(self.stock_name))
+
+        plt.subplot(2, 1, 2)
+        plt.plot(y, color='red', label='Real {} Stock Prices'.format(self.stock_name))
+        plt.plot(pred, color='blue', label='Predicted {} Stock Prices'.format(self.stock_name))
+        plt.title('{} Stock Prices Prediction - walk {}'.format(self.stock_name, walk))
+        plt.xlabel('Time')
+        plt.ylabel('{} Stock Price'.format(self.stock_name))
+
+        # plt.show()
+
+        result_path = os.path.join(result_path, 'walk_{}.png'.format(walk))
+        plt.savefig(fname=result_path, dpi=100)
+
+
+    def denormalize_pred_walk(self, walk, data='VALIDATION'):
+
+        walk_data = self.walks['WALK_{}'.format(walk)]
+        y = walk_data[data][1]
+        pred = walk_data['RESULTS']['PRED']
+
+        if self.options & stock_dataset.PRE_DIFFERENCING and self.norm_options["DIFF_PER"] == stock_dataset.DIFF_AFTER:
+
+            y = pd.DataFrame(data=y, columns=['Val'])
+            print(y['Val'].values)
+            y = stock_dataset.rev_difx(y, self.norm_options["ORDER"])
+            y = y['Val'].values
+
+            pred = pd.DataFrame(data=pred, columns=['Val'])
+            print(pred['Val'].values)
+            pred = stock_dataset.rev_difx(pred, self.norm_options["ORDER"])
+            pred = pred['Val'].values
 
         if self.options & stock_dataset.PRE_NORMALIZE:
 
@@ -308,135 +379,52 @@ class ModelFactory:
                 y = (y * walk_data["STD_PARAMS"]["STD"][0]) + walk_data["STD_PARAMS"]["MEAN"][0]
                 pred = (pred * walk_data["STD_PARAMS"]["STD"][0]) + walk_data["STD_PARAMS"]["MEAN"][0]
 
-        # if self.options & stock_dataset.PRE_DIFFERENCING:
-        #
-        #     y = pd.DataFrame(data=y, columns=['Val'])
-        #     y = stock_dataset.rev_difx(y, order=5)
-        #     y = y['Val'].values
-        #
-        #     pred = pd.DataFrame(data=pred, columns=['Val'])
-        #     pred = stock_dataset.rev_difx(pred, order=5)
-        #     pred = pred['Val'].values
+        if self.options & stock_dataset.PRE_DIFFERENCING and self.norm_options["DIFF_PER"] == stock_dataset.DIFF_BEFORE:
 
-        plt.figure()
-        plt.plot(y, color='red', label='Real {} Stock Prices'.format(self.stock_name))
-        plt.plot(pred, color='blue', label='Predicted {} Stock Prices'.format(self.stock_name))
-        plt.title('{} Stock Prices Prediction - walk {}'.format(self.stock_name, walk))
-        plt.xlabel('Time')
-        plt.ylabel('{} Stock Price'.format(self.stock_name))
-        plt.show()
+            y = pd.DataFrame(data=y, columns=['Val'])
+            print(y['Val'].values)
+            y = stock_dataset.rev_difx(y, self.norm_options["ORDER"])
+            y = y['Val'].values
 
-        result_path = os.path.join(result_path, 'walk_{}.png'.format(walk))
-        plt.savefig(fname=result_path, dpi=100)
+            pred = pd.DataFrame(data=pred, columns=['Val'])
+            print(pred['Val'].values)
+            pred = stock_dataset.rev_difx(pred, self.norm_options["ORDER"])
+            pred = pred['Val'].values
 
-        # if self.label == 'LR':
-        #
-        #     close = self.dataset["Close"].values[self.lookback: -1]
-        #     perc_pred = (pred * walk_data['STD_PARAMS']['STD'][0]) + walk_data['STD_PARAMS']['MEAN'][0]
-        #     close_pred = (perc_pred * close) + close
+        return y, pred
 
+    def denormalize_data_walk(self, walk, data='VALIDATION'):
 
-        # result = []
-        # history_collection = []
-        # min_rmse = 99999
-        #
-        # print("Number of models:", len(models))
-        # tot_time = time.time()
-        # history = []
-        # count = 0
-        # # train all models
-        # set_regressors = []
-        # for model in models:
-        #     print("\n***************************\n", model)
-        #
-        #     model_time = time.time()
-        #     rmse_tot = 0
-        #     mape_tot = 0
-        #     # walk forward
-        #     for i in range(n_walk):
-        #         regressor = create_nn(input_shape=(x_train_set[0].shape[1], x_train_set[0].shape[2]),
-        #                               version=model['model'],
-        #                               dense_layers=model['dense_layers'],
-        #                               conv_units=model['conv_units'],
-        #                               lstm_units=model['lstm_units'],
-        #                               learning_rate=model['lr'])
-        #         print("\nmodel:", count, "/", len(models) * n_walk, "\nwalk:", i, "\n")
-        #         history.append(
-        #             regressor.fit(x_train_set[i], y_train_set[i], epochs=model['epochs'], batch_size=model['batch'],
-        #                           validation_data=(x_valid_set[i], y_valid_set[i]), callbacks=callbacks))
-        #
-        #         # Prediction on test set
-        #         prediction = regressor.predict(x_test_set[i])
-        #         y = y_test_set[i].reshape(-1, 1)
-        #         if sc is not None:
-        #             prediction = sc.inverse_transform(np.hstack((prediction,
-        #                                                          np.zeros((len(x_test_set[i]),
-        #                                                                    x_test_set[0].shape[2] - 1)))))
-        #             y = sc.inverse_transform(np.hstack((y,
-        #                                                 np.zeros((len(y), x_test_set[0].shape[2] - 1)))))
-        #
-        #         # Evaluating our model
-        #         # plot_prediction(name, y[:, 0], prediction[:, 0])
-        #         rmse, mape = metrics(y[:, 0], prediction[:, 0])
-        #         rmse_tot += rmse
-        #         mape_tot += mape
-        #         print("\nTOT:")
-        #         print(model)
-        #         print("RMSE: {}.".format(rmse))
-        #         print("MAPE: {}.".format(mape))
-        #         result.append([(rmse, mape), model, int((time.time() - model_time) / 60)])
-        #         print("The model has been generated in", int((time.time() - model_time) / 60), "min")
-        #         set_regressors.append(regressor)
-        #         count += 1
-        #
-        #     if rmse_tot < min_rmse:
-        #         min_rmse = rmse_tot
-        #         best_regressor = set_regressors
-        #         print("******** THIS IS THE BEST *********")
-        #         print(model)
-        #         print("***********************************")
-        #
-        #     print("\nMean:")
-        #     print(model)
-        #     print("RMSE mean: {}.".format(rmse))
-        #     print("MAPE mean: {}.".format(mape))
-        #
-        # print("All models has been generated in", int((time.time() - tot_time) / 60), "min")
-        #
-        # return result, history_collection, best_regressor
+        walk_data = self.walks['WALK_{}'.format(walk)]
+        x = walk_data[data][0]
 
-    # def plot_prediction_close(self, real, regressor, x, y):
-    #
-    #     n_walks = self.walks['N_WALKS']
-    #
-    #     for walk in range(n_walks):
-    #
-    #         mean = self.walks['WALK_{}'.format(walk)]['STD_PARAMS']['MEAN']
-    #         std = self.walks['WALK_{}'.format(walk)]['STD_PARAMS']['STD']
-    #
-    #         original_close = self.dataset["Close"].values
-    #
-    #
-    #     real = real[-252:]
-    #     real_one_day_before = real[:-1]
-    #     i = 7
-    #     prediction = regressor.predict(X_test_set[i])
-    #
-    #     if sc is not None:
-    #         prediction = sc.inverse_transform(np.hstack((prediction,
-    #                                                      np.zeros((len(X_test_set[i]), X_test_set[0].shape[2] - 1)))))
-    #
-    #         y = y_test_set[i].reshape(-1, 1)
-    #         y = sc.inverse_transform(np.hstack((y, np.zeros((len(y), X_test_set[0].shape[2] - 1)))))
-    #         plot_prediction("name", real[1:], prediction[:, 0] * real_one_day_before + real_one_day_before)
-    #         plot_prediction("name", y[:, 0], prediction[:, 0])
-    #     else:
-    #         plot_prediction("name", real[1:], prediction * real_one_day_before + real_one_day_before)
-    #         for j in range(len(prediction[:10])):
-    #             print(prediction[j], prediction[j] * real_one_day_before[j] + real_one_day_before[j], real[j + 1],
-    #                   y_test_set[i])
-    #
-    #     return prediction, y
+        if self.options & stock_dataset.PRE_DIFFERENCING and self.norm_options["DIFF_PER"] == stock_dataset.DIFF_AFTER:
+
+            x = pd.DataFrame(data=x, columns=['Val'])
+            print(x['Val'].values)
+            x = stock_dataset.rev_difx(x, self.norm_options["ORDER"])
+            x = x['Val'].values
+
+        if self.options & stock_dataset.PRE_NORMALIZE:
+
+            if self.norm_options["METHOD"] == stock_dataset.NORM_MIN_MAX:
+
+                low = self.norm_options["HIGH_LOW"][0]
+                high = self.norm_options["HIGH_LOW"][1]
+
+                x = (((x - low) / (high - low)) * (walk_data['STD_PARAMS']['MAX'][0] - walk_data['STD_PARAMS']['MIN'][0]) + walk_data['STD_PARAMS']['MIN'][0])
+            elif self.norm_options["METHOD"] == stock_dataset.NORM_Z_SCORE:
+
+                x = (x * walk_data["STD_PARAMS"]["STD"][0]) + walk_data["STD_PARAMS"]["MEAN"][0]
+
+        if self.options & stock_dataset.PRE_DIFFERENCING and self.norm_options["DIFF_PER"] == stock_dataset.DIFF_BEFORE:
+
+            x = pd.DataFrame(data=x, columns=['Val'])
+            print(x['Val'].values)
+            x = stock_dataset.rev_difx(x, self.norm_options["ORDER"])
+            x = x['Val'].values
+
+        return x
 
 
 def metrics(y, pred):
@@ -471,5 +459,17 @@ def metrics(y, pred):
     return pd.DataFrame(data=data, columns=columns)
 
 
+def guessing_test(pred, label, offset=0):
 
+    choice = np.sum((pred > offset))
+    choice += np.sum((pred < -offset))
+    increment = np.sum((pred > offset) & (label > 0))
+    decrement = np.sum((pred < -offset) & (label < 0))
+
+    print("number of right increment:", increment)
+    print("number of right decrement:", decrement)
+    print("Number of elements:", len(label))
+
+    print("Accuracy:", round((increment+decrement)/len(label), 2))
+    print("Accuracy on choice:", round((increment+decrement)/choice, 2))
 
