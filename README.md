@@ -5,6 +5,7 @@ We consider the input dataset with these features: Open, Low, High, Close, Volum
 
 First, download the project and import required packages:
 ```
+from stock_dataset import stock_dataset
 from stock_dataset.stock_regressors import ModelFactory
 ```
 
@@ -28,12 +29,12 @@ rem_features = ["High", "Low", "Volume", "Open","Close"]
 lookback = 60
 split = (3, 1, 1)
 high_low = (0.001, 1)
-pre_processing_options = [PRE_NORMALIZE,
-                          PRE_INCLUDE_LR,
-                          PRE_INCLUDE_TI]
+pre_processing_options = [stock_dataset.PRE_NORMALIZE,
+                          stock_dataset.PRE_INCLUDE_LR,
+                          stock_dataset.PRE_INCLUDE_TI]
 
 norm_options = {
-    "METHOD": NORM_MIN_MAX, #NORM_Z_SCORE,
+    "METHOD": stock_dataset.NORM_MIN_MAX, #stock_dataset.NORM_Z_SCORE,
     "HIGH_LOW": high_low
 }
 
@@ -43,7 +44,7 @@ label = "LR" #"Close"
 
 You can make the instance of object with this line of code:
 ```
-mf = ModelFactory(stock_name_list = stock_name,
+mf = ModelFactory(stock_name = stock_name,
                   rem_features = rem_features, 
                   lookback = lookback, 
                   split = split, 
@@ -79,5 +80,5 @@ mf.add_grid_search(models = [2],
 
 To start with training you just have to:
 ```
-mf.grid_search(data='VALIDATION')
+mf.grid_search(result_path='./grid_search_results')
 ```
