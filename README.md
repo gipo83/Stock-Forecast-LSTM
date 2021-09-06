@@ -19,7 +19,7 @@ Some informations about preprocessing are:
   - `normalization options`: values to set a king of normalization in preprocessing step (it will be executed only whether in preprocessing options is requested);
     - `METHOD`: method of normalization (NORM_MIN_MAX or NORM_Z_SCORE);
     - `HIGH_LOW`: tuple for min max normalization;
-  - `stock name`: list of stocks that you want include in training;
+  - `stock name`: name of the stock to be predicted;
   - `label`: value to predict.
 
 We show an example below
