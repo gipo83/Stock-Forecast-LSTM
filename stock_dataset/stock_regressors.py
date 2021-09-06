@@ -320,6 +320,7 @@ class ModelFactory:
 
             path = os.path.join(result_path, 'walk_{}_close_pred.png'.format(walk))
             plt.savefig(fname=path, dpi=100)
+            plt.close()
 
         walk_data = self.walks['WALK_{}'.format(walk)]
         y = walk_data[data][1]
@@ -344,7 +345,7 @@ class ModelFactory:
 
         result_path = os.path.join(result_path, 'walk_{}.png'.format(walk))
         plt.savefig(fname=result_path, dpi=100)
-
+        plt.close()
 
     def denormalize_pred_walk(self, walk, data='VALIDATION'):
 
@@ -472,4 +473,3 @@ def guessing_test(pred, label, offset=0):
 
     print("Accuracy:", round((increment+decrement)/len(label), 2))
     print("Accuracy on choice:", round((increment+decrement)/choice, 2))
-
