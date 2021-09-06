@@ -46,7 +46,7 @@ def main():
     mf = ModelFactory(rem_features=rem_features, lookback=lookback, split=split, options=pre_processing_options, label="LR", norm_options=norm_options)
     #mf.add_grid_search(models=[2], epochs=[70], batches=[16, 32], learning_rates=[0.01, 0.001], learning_rate_steps=[10, 5], learning_rate_decays=[0.90], dense_layers=[1, 2], lstm_units=[64, 128])
     mf.add_grid_search(models=[2], epochs=[70], batches=[32], learning_rates=[0.01], learning_rate_steps=[5], learning_rate_decays=[0.90], dense_layers=[1], lstm_units=[64])
-    mf.grid_search(result_path='./grid_search_results_70')
+    mf.grid_search(result_path='./grid_search_results')
 
     data = "TEST"
     mf.evaluate(data=data)
