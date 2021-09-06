@@ -45,23 +45,24 @@ def main():
 
     mf = ModelFactory(rem_features=rem_features, lookback=lookback, split=split, options=pre_processing_options, label="LR", norm_options=norm_options)
     #mf.add_grid_search(models=[2], epochs=[70], batches=[16, 32], learning_rates=[0.01, 0.001], learning_rate_steps=[10, 5], learning_rate_decays=[0.90], dense_layers=[1, 2], lstm_units=[64, 128])
-    #mf.add_grid_search(models=[2], epochs=[70], batches=[32], learning_rates=[0.01], learning_rate_steps=[5], learning_rate_decays=[0.90], dense_layers=[1], lstm_units=[64])
+    mf.add_grid_search(models=[2], epochs=[70], batches=[32], learning_rates=[0.01], learning_rate_steps=[5], learning_rate_decays=[0.90], dense_layers=[1], lstm_units=[64])
     mf.grid_search(result_path='./grid_search_results_70')
 
-    set = "VALIDATION"
+    data = "TEST"
+    mf.evaluate(data=data)
     for i in range(mf.walks["N_WALKS"]):
         if i == 0:
-            y = mf.walks["WALK_{}".format(i)]['DENORM'][set]
-            x = mf.walks["WALK_{}".format(i)]["RESULTS"]["DENORM"]
+            y, x = mf.denormalize_pred_walk(walk=i, data=data)
         else:
-            y = np.hstack((y, mf.walks["WALK_{}".format(i)]['DENORM'][set]))
-            x = np.hstack((x, mf.walks["WALK_{}".format(i)]["RESULTS"]["DENORM"]))
+            tmp_y, tmp_x = mf.denormalize_pred_walk(walk=i, data=data)
+            y = np.hstack((y, tmp_y))
+            x = np.hstack((x, tmp_x))
 
     met = metrics(y, x)
     print(met["RMSE"].values)
     print(met["MAPE"].values)
-    y = y.reshape(-1, 1)
-    offset = 0.05
+
+    offset = 0
     guessing_test(x, y, offset)
 
     return 0
