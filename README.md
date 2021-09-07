@@ -4,6 +4,7 @@ The goal of this project is generating a LSTM neural network with Keras able to 
 We consider the input dataset with these features: Open, Low, High, Close, Volume, Name.
 
 First, download the project.
+
 In Colab you can do this:
 ```
 !git clone https://github.com/gipo83/Stock-Forecast-LSTM
