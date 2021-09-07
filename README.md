@@ -3,7 +3,13 @@ The goal of this project is generating a LSTM neural network with Keras able to 
 
 We consider the input dataset with these features: Open, Low, High, Close, Volume, Name.
 
-First, download the project and import required packages:
+First, download the project:
+```
+!git clone https://github.com/gipo83/Stock-Forecast-LSTM
+!cp -r Stock-Forecast-LSTM/* .
+```
+
+Import required packages:
 ```
 from stock_dataset import stock_dataset
 from stock_dataset.stock_regressors import ModelFactory
@@ -23,7 +29,7 @@ Some informations about preprocessing are:
   - `stock name`: name of the stock to be predicted;
   - `label`: value to predict.
 
-We show an example below
+We show an example below:
 ```
 rem_features = ["High", "Low", "Volume", "Open","Close"]
 lookback = 60
