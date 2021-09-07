@@ -295,19 +295,18 @@ class ModelFactory:
 
             if data == 'TRAIN':
 
-                close = self.dataset[str(start_year):str(start_year + train - 1)]['Close'].values
-                close = close[self.lookback:]
+                open = self.dataset[str(start_year):str(start_year + train - 1)]['Open'].values
+                open = open[self.lookback:]
 
             elif data == 'VALIDATION':
 
-                close = self.dataset[str(start_year + train):str(start_year + train + val - 1)]['Close'].values
+                open = self.dataset[str(start_year + train):str(start_year + train + val - 1)]['Open'].values
 
             else:
 
-                close = self.dataset[str(start_year + train + val):str(start_year + train + val + test - 1)]['Close'].values
+                open = self.dataset[str(start_year + train + val):str(start_year + train + val + test - 1)]['Open'].values
 
-            close_one_day_before = close[:-1]
-            pred_close = pred_denorm[:-1] * close_one_day_before + close_one_day_before
+            pred_close = pred_denorm * open + open
 
             plt.figure()
             plt.plot(close[1:], color='red', label='Real {} Stock Prices'.format(self.stock_name))
