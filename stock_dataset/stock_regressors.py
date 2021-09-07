@@ -297,19 +297,23 @@ class ModelFactory:
 
                 open = self.dataset[str(start_year):str(start_year + train - 1)]['Open'].values
                 open = open[self.lookback:]
+                close = self.dataset[str(start_year):str(start_year + train - 1)]['Close'].values
+                close = close[self.lookback:]
 
             elif data == 'VALIDATION':
 
                 open = self.dataset[str(start_year + train):str(start_year + train + val - 1)]['Open'].values
+                close = self.dataset[str(start_year + train):str(start_year + train + val - 1)]['Close'].values
 
             else:
 
                 open = self.dataset[str(start_year + train + val):str(start_year + train + val + test - 1)]['Open'].values
+                close = self.dataset[str(start_year + train + val):str(start_year + train + val + test - 1)]['Close'].values
 
             pred_close = pred_denorm * open + open
 
             plt.figure()
-            plt.plot(open, color='red', label='Real {} Stock Prices'.format(self.stock_name))
+            plt.plot(close, color='red', label='Real {} Stock Prices'.format(self.stock_name))
             plt.plot(pred_close, color='blue', label='Predicted {} Stock Prices'.format(self.stock_name))
             plt.title('{} Stock Prices Prediction - walk {}'.format(self.stock_name, walk))
             plt.xlabel('Time')
