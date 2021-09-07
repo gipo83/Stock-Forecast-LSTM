@@ -134,7 +134,7 @@ class ModelFactory:
 
         return regressor
 
-    def grid_search(self, result_path="./grid_search_results", data='VALIDATION'):
+    def grid_search(self, result_path="./grid_search_results", data='VALIDATION', anchored=False):
 
         if not os.path.exists(result_path):
 
@@ -164,13 +164,13 @@ class ModelFactory:
             for walk in range(self.walks['N_WALKS']):
 
                 walk_data = self.walks['WALK_{}'.format(walk)]
-
-                regressor = self.create_nn(input_shape=(walk_data['TRAIN'][0].shape[1], walk_data['TRAIN'][0].shape[2]),
-                                           version=model['model'],
-                                           dense_layers=model['dense_layers'],
-                                           conv_units=model['conv_units'],
-                                           lstm_units=model['lstm_units'],
-                                           learning_rate=model['learning_rate'])
+                if not anchored or count == 1:
+                    regressor = self.create_nn(input_shape=(walk_data['TRAIN'][0].shape[1], walk_data['TRAIN'][0].shape[2]),
+                                               version=model['model'],
+                                               dense_layers=model['dense_layers'],
+                                               conv_units=model['conv_units'],
+                                               lstm_units=model['lstm_units'],
+                                               learning_rate=model['learning_rate'])
 
                 print("\nmodel:", count, "/", len(self.models) * self.walks['N_WALKS'], "\nwalk:", walk, "\n")
                 histories.append(regressor.fit(x=walk_data['TRAIN'][0],
@@ -187,7 +187,7 @@ class ModelFactory:
 
             model_path = os.path.join(result_path, 'model_{}'.format(count - 1))
             self.evaluate(data, result_path=model_path)
-            json.dump(model, open(os.path.join(model_path + "_VALIDATION", 'params.json'), 'w'))
+            json.dump(model, open(os.path.join(model_path + "_" + data, 'params.json'), 'w'))
 
             results = np.vstack((results, self.walks['RESULTS']['METRICS'].values))
 
