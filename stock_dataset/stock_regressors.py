@@ -309,7 +309,7 @@ class ModelFactory:
             pred_close = pred_denorm * open + open
 
             plt.figure()
-            plt.plot(close[1:], color='red', label='Real {} Stock Prices'.format(self.stock_name))
+            plt.plot(open, color='red', label='Real {} Stock Prices'.format(self.stock_name))
             plt.plot(pred_close, color='blue', label='Predicted {} Stock Prices'.format(self.stock_name))
             plt.title('{} Stock Prices Prediction - walk {}'.format(self.stock_name, walk))
             plt.xlabel('Time')
