@@ -8,7 +8,8 @@ First, download the project.
 In Colab you can do this:
 ```
 !git clone https://github.com/gipo83/Stock-Forecast-LSTM
-!cp -r Stock-Forecast-LSTM/* .
+!mv Stock-Forecast-LSTM/* .
+!rm -r Stock-Forecast-LSTM/
 ```
 
 Import required packages:
