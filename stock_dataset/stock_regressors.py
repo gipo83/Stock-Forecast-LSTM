@@ -134,7 +134,7 @@ class ModelFactory:
 
         return regressor
 
-    def grid_search(self, result_path="./grid_search_results"):
+    def grid_search(self, result_path="./grid_search_results", data='VALIDATION'):
 
         if not os.path.exists(result_path):
 
@@ -186,7 +186,7 @@ class ModelFactory:
                 count += 1
 
             model_path = os.path.join(result_path, 'model_{}'.format(count - 1))
-            self.evaluate(data='VALIDATION', result_path=model_path)
+            self.evaluate(data, result_path=model_path)
             json.dump(model, open(os.path.join(model_path + "_VALIDATION", 'params.json'), 'w'))
 
             results = np.vstack((results, self.walks['RESULTS']['METRICS'].values))
